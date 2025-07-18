@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Espectro Corazón con Fondo</title>
+  <style>
+    /* Fondo dividido en 4 cuadrantes */
+    .background {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    .bg-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;         /* Recorta sin deformar */
+      object-position: center;   /* Centrado de contenido */
+      filter: brightness(0.25) blur(2px); /* Difumina y oscurece ligeramente */
+    }
+
+    body {
+      margin: 0;
+      background-color: #000;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    input {
+      position: absolute;
+      top: 20px;
+      z-index: 10;
+    }
+
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Fondo con 4 imágenes centradas -->
+<div class="background">
+  <img src="VRCHAT1.png" class="bg-img horizontal">
+  <img src="VRCHAT2.png" class="bg-img horizontal">
+  <img src="VRCHAT3.png" class="bg-img vertical">
+  <img src="VRCHAT4.png" class="bg-img vertical">
+</div>
+
+<!-- Selector de archivo de audio -->
+<input type="file" id="file" accept="audio/*">
+
+<!-- Canvas del espectro -->
+<canvas id="visualizer"></canvas>
+
+<script>
+  const canvas = document.getElementById('visualizer');
+  const ctx = canvas.getContext('2d');
+  const fileInput = document.getElementById('file');
+
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  let analyser, sourceNode, audioBufferSource;
+
+  fileInput.addEventListener('change', function () {
+    const file = this.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = function (e) {
+      const arrayBuffer = e.target.result;
+
+      audioContext.decodeAudioData(arrayBuffer, function (audioBuffer) {
+        if (audioBufferSource) audioBufferSource.stop();
+
+        audioBufferSource = audioContext.createBufferSource();
+        audioBufferSource.buffer = audioBuffer;
+
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        audioBufferSource.connect(analyser);
+        analyser.connect(audioContext.destination);
+        audioBufferSource.start();
+
+        function draw() {
+          requestAnimationFrame(draw);
+          analyser.getByteFrequencyData(dataArray);
+
+          const activeData = dataArray.filter(v => v > 5); // Solo frecuencias activas
+          const numLines = activeData.length;
+
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          ctx.save();
+          ctx.translate(canvas.width / 2, canvas.height / 2); // Centro de la pantalla
+
+          const scale = 12;             // Tamaño del corazón
+          const maxLineLength = 100;  // Longitud máxima de las líneas
+
+          for (let i = 0; i < numLines; i++) {
+            const t = (i / numLines) * 2 * Math.PI;
+
+            // Fórmula paramétrica de corazón
+            const x = scale * 16 * Math.pow(Math.sin(t), 3);
+            const y = -scale * (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+
+            const magnitude = activeData[i];
+            const len = (magnitude / 255) * maxLineLength;
+
+            // Dirección recta desde el centro hacia (x, y)
+            let dx = x;
+            let dy = y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            dx /= dist;
+            dy /= dist;
+
+            const endX = x + dx * len;
+            const endY = y + dy * len;
+
+            const hue = 300 - (magnitude / 255) * 300;
+            ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+          }
+
+          ctx.restore();
+        }
+
+        draw();
+      });
+    };
+
+    reader.readAsArrayBuffer(file);
+  });
+</script>
+
+</body>
+</html>
